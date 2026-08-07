@@ -1,0 +1,27 @@
+[project]
+name = "toolbox-talk"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "bryceshirley", email = "bryce.shirley@stfc.ac.uk" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "array-api-compat>=1.15.0",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.1",
+    "pathlib>=1.0.1",
+    "ruff>=0.16.0",
+    "scikit-image>=0.26.0",
+    "scipy>=1.18.0",
+    "torch>=2.13.0",
+    "ty>=0.0.64",
+]
+
+[project.scripts]
+toolbox-talk = "toolbox_talk:main"
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
