@@ -8,5 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+.ruff_cache
 
 *.mp4
+*.png
+results/
