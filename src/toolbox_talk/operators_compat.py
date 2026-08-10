@@ -5,7 +5,7 @@ from toolbox_talk.physics import apply_hamiltonian
 from toolbox_talk.utils import Array
 
 
-def split_operator_step(psi: Array, V: Array, K2: Array, dt: float) -> Array:
+def split_operator_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
     """
     First-order Lie-Trotter Operator Splitting.
     Evolves kinetic and potential operators sequentially in their native dual spaces.
@@ -17,30 +17,30 @@ def split_operator_step(psi: Array, V: Array, K2: Array, dt: float) -> Array:
         The current quantum state.
     V : Array
         The potential energy operator.
-    K2 : Array
-        The kinetic energy operator.
+    K : Array
+        The diagonalized kinetic energy operator.
     dt : float
         The time step for evolution.
     """
+    # Get the appropriate array namespace (NumPy, PyTorch, etc.)
     xp = get_namespace(psi, V)
 
-    # 1. Kinetic phase shift in momentum space
-    psi_k = xp.fft.fft2(psi)
-    psi_k = psi_k * xp.exp(-1j * dt * 0.5 * K2)
-    psi_real = xp.fft.ifft2(psi_k)
+    # 1. Kinetic wave phase shift in momentum space
+    # Momentum space -> apply exp(1j * dt * K) -> Real space
+    psi = xp.fft.ifft2(xp.exp(-1j * K * dt) * xp.fft.fft2(psi))
 
-    # 2. Potential phase shift in real space
-    return psi_real * xp.exp(-1j * dt * V)
+    # 2. Potential wave phase shift in real space
+    return psi * xp.exp(1j * dt * V)
 
 
-def forward_euler_step(psi: Array, V: Array, K2: Array, dt: float) -> Array:
+def forward_euler_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
     """First-order Taylor expansion. Fast, but physically unstable (not unitary)."""
-    H_psi = apply_hamiltonian(psi, V, K2)
-    return psi - 1j * dt * H_psi
+    H_psi = apply_hamiltonian(psi, V, K)
+    return psi + 1j * dt * H_psi
 
 
 def arnoldi_step(
-    psi: Array, V: Array, K2: Array, dt: float, tol: float = 1e-1, n_krylov: int = 500
+    psi: Array, V: Array, K: Array, dt: float, tol: float = 1e-1, n_krylov: int = 500
 ) -> Array:
     """
     Projects a massive operator into a tiny Krylov subspace, evaluating
@@ -50,7 +50,7 @@ def arnoldi_step(
     def operator(psi):
         """Wrapper to apply the Hamiltonian operator."""
         psi_k = xp.fft.fft2(psi)
-        T_psi = xp.fft.ifft2(0.5 * K2 * psi_k)
+        T_psi = xp.fft.ifft2(K * psi_k)
         return T_psi + V * psi
 
     xp = get_namespace(psi, V)

@@ -6,7 +6,7 @@ from toolbox_talk.physics import apply_hamiltonian
 from toolbox_talk.utils import from_numpy, to_numpy
 
 
-def crank_nicolson_step(psi, V, K2, dt):
+def crank_nicolson_step(psi, V, K, dt):
     """
     Padé approximant. Unitary and stable.
     Uses SciPy's GMRES on the CPU for the solver algorithm, but safely
@@ -24,7 +24,7 @@ def crank_nicolson_step(psi, V, K2, dt):
         )
 
         # 2. Perform the heavy FFT operations on the GPU
-        H_psi = apply_hamiltonian(psi_vec, V, K2)
+        H_psi = apply_hamiltonian(psi_vec, V, K)
         res = psi_vec + 0.5j * dt * H_psi
 
         # 3. Send the flat result back to the CPU for SciPy
@@ -36,7 +36,7 @@ def crank_nicolson_step(psi, V, K2, dt):
     )
 
     # Compute the Right-Hand Side entirely on the device, then move to CPU
-    H_psi_old = apply_hamiltonian(psi, V, K2)
+    H_psi_old = apply_hamiltonian(psi, V, K)
     rhs_device = psi - 0.5j * dt * H_psi_old
     rhs_np = to_numpy(xp.reshape(rhs_device, (-1,)), xp)
 
