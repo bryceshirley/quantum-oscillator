@@ -1,4 +1,4 @@
-"""3D harmonic-well quantum animation (toolbox edition).
+"""3D harmonic-well quantum animation.
 
 Renders |psi|^2 riding on the potential surface returned by
 ``toolbox_talk.physics.get_propagators``, with tracer dots and trails painted
@@ -17,10 +17,12 @@ Runs to t = 2*pi (one full period of the omega = 1 oscillator) by default.
 from __future__ import annotations
 
 import time
+from typing import cast
 
 import numpy as np
 from matplotlib import animation
 from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d.axis3d import Axis as Axis3D
 
 # Using your exact toolbox imports
 from toolbox_talk.operators_compat import split_operator_step
@@ -279,12 +281,9 @@ def generate_3d_animation_on_bowl(
             pass
 
     ax.tick_params(colors="white", labelsize=8)
-    ax.xaxis.pane.fill = False
-    ax.yaxis.pane.fill = False
-    ax.zaxis.pane.fill = False
-    ax.xaxis.pane.set_edgecolor("white")
-    ax.yaxis.pane.set_edgecolor("white")
-    ax.zaxis.pane.set_edgecolor("white")
+    for axis in cast("tuple[Axis3D, Axis3D, Axis3D]", (ax.xaxis, ax.yaxis, ax.zaxis)):
+        axis.pane.fill = False
+        axis.pane.set_edgecolor("white")
     ax.set_xlabel("X Position", color="white", labelpad=10)
     ax.set_ylabel("Y Position", color="white", labelpad=10)
     ax.set_zlabel("Energy / Probability", color="white", labelpad=10)
@@ -369,6 +368,6 @@ if __name__ == "__main__":
         L=10.0,
         num_steps=300,
         target_time=2 * np.pi,
-        state_image="horse",
+        state_image="double_slit",
         backend="torch",
     )
