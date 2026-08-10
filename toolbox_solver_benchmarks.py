@@ -143,7 +143,7 @@ def run_experiment(N=128, L=10.0, state_image="horse", num_steps=1, backend="tor
 if __name__ == "__main__":
     N = 128
     L = 10.0
-    state_image = "single_shifted_slit"
+    state_image = "horse"
     backend = "torch"
     num_steps = 100
     run_experiment(

@@ -368,6 +368,6 @@ if __name__ == "__main__":
         L=10.0,
         num_steps=300,
         target_time=2 * np.pi,
-        state_image="double_slit",
+        state_image="horse",
         backend="torch",
     )

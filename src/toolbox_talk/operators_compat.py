@@ -27,7 +27,9 @@ def split_operator_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
 
     # 1. Kinetic wave phase shift in momentum space
     # Momentum space -> apply exp(1j * dt * K) -> Real space
-    psi = xp.fft.ifft2(xp.exp(-1j * K * dt) * xp.fft.fft2(psi))
+    psi_k = xp.fft.fft2(psi)
+    psi_k = psi_k * xp.exp(1j * dt * K)
+    psi = xp.fft.ifft2(psi_k)
 
     # 2. Potential wave phase shift in real space
     return psi * xp.exp(1j * dt * V)
