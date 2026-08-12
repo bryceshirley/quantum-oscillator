@@ -13,7 +13,7 @@ from toolbox_talk.operators_compat import (
 )
 from toolbox_talk.operators_noncompat import crank_nicolson_step
 from toolbox_talk.physics import get_initial_state, get_propagators
-from toolbox_talk.utils import Array, PropagatorFunc, to_host
+from toolbox_talk.utils import Array, PropagatorFunc, resolve_backend, to_host
 
 
 def complex_to_rgb(z_array):
@@ -57,7 +57,7 @@ def run_propagation_experiment(
     """
 
     xp = get_namespace(psi0)
-    psi = psi0.clone() if hasattr(psi0, "clone") else xp.copy(psi0)
+    psi = xp.asarray(psi0, copy=True)
 
     start_time = time.time()
     for milestone_name, total_dt_jump in milestones:
@@ -100,7 +100,9 @@ def run_propagation_experiment(
     return psi
 
 
-def run_experiment(N=128, L=10.0, state_image="horse", num_steps=1, backend="torch"):
+def run_experiment(
+    N=128, L=10.0, state_image="horse", blur=0.35, num_steps=1, backend="torch"
+):
 
     # Create results directory if it doesn't exist
     results_dir = pathlib.Path("results")
@@ -120,8 +122,20 @@ def run_experiment(N=128, L=10.0, state_image="horse", num_steps=1, backend="tor
         ("Crank-Nicolson", crank_nicolson_step),
         ("Arnoldi Krylov", arnoldi_step),
     ]
-    psi0 = get_initial_state(N, L, state_image=state_image, backend=backend)
-    V, K = get_propagators(N, L, backend=backend)
+
+    backend_info = resolve_backend(backend)
+    psi0 = get_initial_state(
+        N,
+        L,
+        backend_info.xp,
+        state_image,
+        blur,
+        device=backend_info.device,
+        dtype=backend_info.complex,
+    )
+    V, K = get_propagators(
+        N, L, backend_info.xp, device=backend_info.device, dtype=backend_info.real
+    )
 
     # Save the initial state image for reference using Domain Coloring
     psi0_host = to_host(psi0)
@@ -142,10 +156,16 @@ def run_experiment(N=128, L=10.0, state_image="horse", num_steps=1, backend="tor
 
 if __name__ == "__main__":
     N = 128
-    L = 10.0
-    state_image = "horse"
+    L = 10.0  # math.sqrt(math.pi * N / 2)  # Spatial extent of the simulation grid
+    state_image = "vortex"  # Options: "horse", "binary_blobs", "checkerboard", "hubble_deep_field", "retina"
     backend = "torch"
     num_steps = 100
+    blur = 2.0  # Gaussian blur factor for the initial state image
     run_experiment(
-        N=N, L=L, state_image=state_image, num_steps=num_steps, backend=backend
+        N=N,
+        L=L,
+        state_image=state_image,
+        blur=blur,
+        num_steps=num_steps,
+        backend=backend,
     )

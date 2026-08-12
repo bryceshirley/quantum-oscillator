@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 
 from toolbox_talk.operators_compat import split_operator_step
 from toolbox_talk.physics import get_initial_state, get_propagators
-from toolbox_talk.utils import to_host
+from toolbox_talk.utils import resolve_backend, to_host
 
 
 # ==============================================================================
@@ -44,6 +44,7 @@ def generate_animation(
     L: float = 10.0,
     num_steps: int = 300,
     state_image: str = "horse",
+    blur: float = 0.35,
     backend: str = "torch",
 ):
 
@@ -54,8 +55,19 @@ def generate_animation(
     print(" GENERATING QUANTUM REVIVAL MP4 ")
     print("=" * 50)
 
-    psi = get_initial_state(N, L, state_image, backend=backend)
-    V, K = get_propagators(N, L, backend=backend)
+    backend_info = resolve_backend(backend)
+    psi = get_initial_state(
+        N,
+        L,
+        backend_info.xp,
+        state_image,
+        blur,
+        device=backend_info.device,
+        dtype=backend_info.complex,
+    )
+    V, K = get_propagators(
+        N, L, backend_info.xp, device=backend_info.device, dtype=backend_info.real
+    )
 
     # Calculate frames based on dt to reach 2*pi
     num_steps = int(target_time / dt)
@@ -133,8 +145,14 @@ if __name__ == "__main__":
     N = 512
     L = 10.0
     num_steps = 300
-    state_image = "no_blur_horse"  # Options: "horse", "shifted_horse", "cosine", "double_slit", "single_shifted_slit"
+    state_image = "vortex"  # Options: "horse", "shifted_horse", "cosine", "double_slit", "single_shifted_slit"
+    blur = 5.0  # Blur factor for the initial state image
     backend = "torch"  # Options: "numpy" or "torch"
     generate_animation(
-        N=N, L=L, num_steps=num_steps, state_image=state_image, backend=backend
+        N=N,
+        L=L,
+        num_steps=num_steps,
+        state_image=state_image,
+        blur=blur,
+        backend=backend,
     )

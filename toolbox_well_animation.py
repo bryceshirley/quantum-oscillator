@@ -27,7 +27,7 @@ from mpl_toolkits.mplot3d.axis3d import Axis as Axis3D
 # Using your exact toolbox imports
 from toolbox_talk.operators_compat import split_operator_step
 from toolbox_talk.physics import get_initial_state, get_propagators
-from toolbox_talk.utils import to_host
+from toolbox_talk.utils import resolve_backend, to_host
 
 MAGMA = plt.cm.magma
 
@@ -63,6 +63,7 @@ def generate_3d_animation_on_bowl(
     num_steps: int = 300,  # integrator steps per quarter period (pi/2)
     target_time: float = 2 * np.pi,  # full period of the omega = 1 oscillator
     state_image: str = "horse",
+    blur: float = 0.35,
     backend: str = "torch",
     well_clip: float = 15.0,  # visual ceiling on the potential walls
     wave_height: float = 4.0,  # physical thickness of the probability blob
@@ -93,8 +94,19 @@ def generate_3d_animation_on_bowl(
     print("=" * 50)
 
     # 1. Initialize Physics Engine via Toolbox
-    psi = get_initial_state(N, L, state_image=state_image, backend=backend)
-    V, K = get_propagators(N, L, backend=backend)
+    backend_info = resolve_backend(backend)
+    psi = get_initial_state(
+        N,
+        L,
+        backend_info.xp,
+        state_image,
+        blur,
+        device=backend_info.device,
+        dtype=backend_info.complex,
+    )
+    V, K = get_propagators(
+        N, L, backend_info.xp, device=backend_info.device, dtype=backend_info.real
+    )
 
     # 2. Setup 3D Spatial Grid
     x = np.linspace(-L, L, N, endpoint=False)
@@ -369,5 +381,6 @@ if __name__ == "__main__":
         num_steps=300,
         target_time=2 * np.pi,
         state_image="horse",
+        blur=0.35,
         backend="torch",
     )

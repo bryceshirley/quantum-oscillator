@@ -8,8 +8,6 @@ from toolbox_talk.utils import Array
 def split_operator_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
     """
     First-order Lie-Trotter Operator Splitting.
-    Evolves kinetic and potential operators sequentially in their native dual spaces.
-    Unconditionally stable (unitary), but incurs a time-splitting error [T, V].
 
     Parameters
     ----------
@@ -21,6 +19,11 @@ def split_operator_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
         The diagonalized kinetic energy operator.
     dt : float
         The time step for evolution.
+
+    Returns
+    -------
+    psi_new : Array
+        The evolved quantum state after applying the split operator step.
     """
     # Get the appropriate array namespace (NumPy, PyTorch, etc.)
     xp = get_namespace(psi, V)
@@ -36,7 +39,25 @@ def split_operator_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
 
 
 def forward_euler_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
-    """First-order Taylor expansion. Fast, but physically unstable (not unitary)."""
+    """
+    First-order Taylor expansion. Fast, but physically unstable (not unitary).
+
+    Parameters
+    ----------
+    psi : Array
+        The current quantum state.
+    V : Array
+        The potential energy operator.
+    K : Array
+        The diagonalized kinetic energy operator.
+    dt : float
+        The time step for evolution.
+
+    Returns
+    -------
+    psi_new : Array
+        The evolved quantum state after applying the forward Euler step.
+    """
     H_psi = apply_hamiltonian(psi, V, K)
     return psi + 1j * dt * H_psi
 
@@ -47,13 +68,33 @@ def arnoldi_step(
     """
     Projects a massive operator into a tiny Krylov subspace, evaluating
     at each step to dynamically check for convergence, and returns the propagated state.
+
+    Parameters
+    ----------
+    psi : Array
+        The current quantum state.
+    V : Array
+        The potential energy operator.
+    K : Array
+        The diagonalized kinetic energy operator.
+    dt : float
+        The time step for evolution.
+    tol : float, optional
+        The tolerance for convergence in the Krylov subspace.
+    n_krylov : int, optional
+        The maximum number of Krylov iterations to perform.
+
+    Returns
+    -------
+    psi_propagated : Array
+        The evolved quantum state after applying the Arnoldi step.
     """
+    if n_krylov < 1:
+        raise ValueError("n_krylov must be at least 1")
 
     def operator(psi):
         """Wrapper to apply the Hamiltonian operator."""
-        psi_k = xp.fft.fft2(psi)
-        T_psi = xp.fft.ifft2(K * psi_k)
-        return T_psi + V * psi
+        return apply_hamiltonian(psi, V, K)
 
     xp = get_namespace(psi, V)
     device = getattr(psi, "device", None)
@@ -65,8 +106,11 @@ def arnoldi_step(
     Q_cols = [q]
     h_cols = []
 
-    H_k_final = None
-    F_k = None
+    # Declared optional because they are only assigned inside the loop; the
+    # guard after the loop is what lets the type checker (and the reader) know
+    # they are populated by the time they are used.
+    H_k_final: Array | None = None
+    F_k: Array | None = None
 
     for k in range(n_krylov):
         v = operator(Q_cols[k])
@@ -82,6 +126,11 @@ def arnoldi_step(
 
         h_col.append(xp.asarray(h_next, dtype=dtype, device=device))
         h_cols.append(h_col)
+
+        # A vanishing subdiagonal means the Krylov space is exhausted: the
+        # subspace is already invariant, so the answer is exact here. Dividing
+        # by it would produce NaNs.
+        breakdown = float(h_next) < 1e-12
 
         # ---------------------------------------------------------
         # BUILD CURRENT (k+1) x (k+1) HESSENBERG MATRIX
@@ -103,7 +152,7 @@ def arnoldi_step(
         H_k_final = H_k
 
         # ---------------------------------------------------------
-        # CONVERGENCE CHECK (Every 10 iterations)
+        # CONVERGENCE CHECK (every 20 iterations, after the 10th)
         # ---------------------------------------------------------
         if k > 10 and k % 20 == 0:
             F_k = agnostic_expm(dt, H_k)
@@ -111,10 +160,13 @@ def arnoldi_step(
 
             err = float(norm_psi) * float(h_next) * float(xp.abs(F_k_elem))
 
-            if err < tol or float(h_next) < 1e-12:
-                if float(h_next) > 1e-12:
+            if err < tol or breakdown:
+                if not breakdown:
                     Q_cols.append(v / h_next)
                 break
+
+        if breakdown:
+            break
 
         q_next = v / h_next
         Q_cols.append(q_next)
@@ -124,6 +176,9 @@ def arnoldi_step(
     # ---------------------------------------------------------
     # RECONSTRUCT THE PROPAGATED WAVEFUNCTION
     # ---------------------------------------------------------
+
+    if H_k_final is None:  # unreachable given n_krylov >= 1, but proves it
+        raise RuntimeError("Arnoldi produced no Hessenberg matrix")
 
     if F_k is None or F_k.shape[0] != actual_k:
         F_k = agnostic_expm(dt, H_k_final)
