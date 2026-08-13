@@ -1,45 +1,21 @@
 import pathlib
 import time
 
-import matplotlib.colors as mcolors
 import numpy as np
 from array_api_compat import get_namespace
-from matplotlib import pyplot as plt
 
-from toolbox_talk.operators_compat import (
-    arnoldi_step,
+from toolbox_talk.data import get_initial_state
+from toolbox_talk.operators import (
     forward_euler_step,
-    split_operator_step,
+    lie_trotter_step,
 )
-from toolbox_talk.operators_noncompat import crank_nicolson_step
-from toolbox_talk.physics import get_initial_state, get_propagators
-from toolbox_talk.utils import Array, PropagatorFunc, resolve_backend, to_host
-
-
-def complex_to_rgb(z_array):
-    """
-    Maps a complex numpy array to an RGB image.
-    Phase -> Hue (Color)
-    Magnitude -> Value (Brightness)
-    Imaginary Component -> Saturation (White in real-space, rainbow in momentum-space)
-    """
-    # Extract phase and map from [-pi, pi] to [0, 1] for the Hue channel
-    phase = np.angle(z_array)
-    h = (phase + np.pi) / (2 * np.pi)
-
-    # Extract magnitude and normalize it for the Value (brightness) channel
-    mag = np.abs(z_array)
-    # Avoid division by zero by adding a tiny epsilon
-    v = mag / (np.max(mag) + 1e-12)
-
-    # np.abs(np.sin(phase)) is 0 when purely real (phase = 0 or pi), making it white.
-    s = np.sqrt(np.abs(np.sin(phase)))
-
-    # Stack channels and convert HSV to RGB
-    hsv = np.dstack((h, s, v))
-    rgb = mcolors.hsv_to_rgb(hsv)
-
-    return rgb
+from toolbox_talk.operators_extra import (
+    arnoldi_step,
+    crank_nicolson_step,
+)
+from toolbox_talk.physics import get_propagators
+from toolbox_talk.plotting import plot_state
+from toolbox_talk.utils import Array, PropagatorFunc
 
 
 def run_propagation_experiment(
@@ -80,20 +56,18 @@ def run_propagation_experiment(
         print(f"Saving image for milestone: {milestone_name} | {operator.__name__}")
 
         # Convert the complex array to RGB domain coloring
-        psi_host = to_host(psi)
-        final_rgb = complex_to_rgb(psi_host)
-
-        plt.figure(figsize=(6, 5))
-        plt.imshow(final_rgb, extent=(-L, L, -L, L))
-        plt.title(f"{milestone_name} | {operator.__name__}")
-
         safe_name = (
             milestone_name.replace(" ", "_").replace("(", "").replace(")", "").lower()
         )
-        plt.savefig(
-            results_dir / f"{operator.__name__.lower()}_{safe_name}.png", dpi=300
+        save_path = results_dir / f"{operator.__name__.lower()}_{safe_name}.png"
+        plot_state(
+            psi,
+            title=f"{operator.__name__} | {milestone_name}",
+            L=L,
+            save_path=save_path,
+            show=False,
+            close=True,
         )
-        plt.close()
 
     end_time = time.time() - start_time
     print(f" >>> {operator.__name__} finished in {end_time:.2f} seconds.")
@@ -118,34 +92,29 @@ def run_experiment(
     ]
     operators = [
         ("Forward Euler", forward_euler_step),
-        ("Split-Operator", split_operator_step),
+        ("Lie-Trotter", lie_trotter_step),
         ("Crank-Nicolson", crank_nicolson_step),
         ("Arnoldi Krylov", arnoldi_step),
     ]
 
-    backend_info = resolve_backend(backend)
     psi0 = get_initial_state(
         N,
         L,
-        backend_info.xp,
         state_image,
         blur,
-        device=backend_info.device,
-        dtype=backend_info.complex,
+        backend=backend,
     )
-    V, K = get_propagators(
-        N, L, backend_info.xp, device=backend_info.device, dtype=backend_info.real
-    )
+    V, K = get_propagators(N, L, backend=backend)
 
     # Save the initial state image for reference using Domain Coloring
-    psi0_host = to_host(psi0)
-    initial_rgb = complex_to_rgb(psi0_host)
-
-    plt.figure(figsize=(6, 5))
-    plt.imshow(initial_rgb, extent=(-L, L, -L, L))
-    plt.title("Initial State | t = 0")
-    plt.savefig(results_dir / "initial.png", dpi=300)
-    plt.close()
+    plot_state(
+        psi0,
+        title="Initial State | t = 0",
+        L=L,
+        save_path=results_dir / "initial.png",
+        show=False,
+        close=True,
+    )
 
     for operator_name, operator_func in operators:
         print(f"\nRunning {operator_name}...")
@@ -155,12 +124,12 @@ def run_experiment(
 
 
 if __name__ == "__main__":
-    N = 128
+    N = 256
     L = 10.0  # math.sqrt(math.pi * N / 2)  # Spatial extent of the simulation grid
-    state_image = "vortex"  # Options: "horse", "binary_blobs", "checkerboard", "hubble_deep_field", "retina"
+    state_image = "camera"
     backend = "torch"
     num_steps = 100
-    blur = 2.0  # Gaussian blur factor for the initial state image
+    blur = 3.0  # Gaussian blur factor for the initial state image
     run_experiment(
         N=N,
         L=L,

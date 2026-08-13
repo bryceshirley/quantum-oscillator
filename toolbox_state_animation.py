@@ -1,42 +1,15 @@
+import pathlib
 import time
 
-import matplotlib.colors as mcolors
 import numpy as np
 from matplotlib import animation
 from matplotlib import pyplot as plt
 
-from toolbox_talk.operators_compat import split_operator_step
-from toolbox_talk.physics import get_initial_state, get_propagators
-from toolbox_talk.utils import resolve_backend, to_host
-
-
-# ==============================================================================
-# VIDEO RENDERER
-# ==============================================================================
-def complex_to_rgb(z_array):
-    """
-    Maps a complex numpy array to an RGB image.
-    Phase -> Hue (Color)
-    Magnitude -> Value (Brightness)
-    Imaginary Component -> Saturation (White in real-space, rainbow in momentum-space)
-    """
-    # Extract phase and map from [-pi, pi] to [0, 1] for the Hue channel
-    phase = np.angle(z_array)
-    h = (phase + np.pi) / (2 * np.pi)
-
-    # Extract magnitude and normalize it for the Value (brightness) channel
-    mag = np.abs(z_array)
-    # Avoid division by zero by adding a tiny epsilon
-    v = mag / (np.max(mag) + 1e-12)
-
-    # np.abs(np.sin(phase)) is 0 when purely real (phase = 0 or pi), making it white.
-    s = np.sqrt(np.abs(np.sin(phase)))
-
-    # Stack channels and convert HSV to RGB
-    hsv = np.dstack((h, s, v))
-    rgb = mcolors.hsv_to_rgb(hsv)
-
-    return rgb
+from toolbox_talk.data import get_initial_state
+from toolbox_talk.operators import lie_trotter_step
+from toolbox_talk.physics import get_propagators
+from toolbox_talk.plotting import complex_to_rgb
+from toolbox_talk.utils import to_host
 
 
 def generate_animation(
@@ -55,23 +28,14 @@ def generate_animation(
     print(" GENERATING QUANTUM REVIVAL MP4 ")
     print("=" * 50)
 
-    backend_info = resolve_backend(backend)
-    psi = get_initial_state(
-        N,
-        L,
-        backend_info.xp,
-        state_image,
-        blur,
-        device=backend_info.device,
-        dtype=backend_info.complex,
-    )
-    V, K = get_propagators(
-        N, L, backend_info.xp, device=backend_info.device, dtype=backend_info.real
-    )
+    psi = get_initial_state(N, L, state_image, blur, backend=backend)
+    V, K = get_propagators(N, L, backend=backend)
 
     # Calculate frames based on dt to reach 2*pi
     num_steps = int(target_time / dt)
-    output_filename = f"quantum_revival_{state_image}.mp4"
+    save_dir = pathlib.Path("animation_output")
+    save_dir.mkdir(parents=True, exist_ok=True)
+    output_filename = save_dir / f"quantum_revival_{state_image}.mp4"
 
     # Define exact frame steps for our milestones
     milestones = {
@@ -108,7 +72,7 @@ def generate_animation(
         for step in range(num_steps + 1):
             # Step physics forward (skip step 0 to preserve the starting frame)
             if step > 0:
-                psi = split_operator_step(psi, V, K, dt)
+                psi = lie_trotter_step(psi, V, K, dt)
 
             # Extract complex state, convert to RGB, and update plot
             psi_host = to_host(psi)
@@ -145,8 +109,8 @@ if __name__ == "__main__":
     N = 512
     L = 10.0
     num_steps = 300
-    state_image = "vortex"  # Options: "horse", "shifted_horse", "cosine", "double_slit", "single_shifted_slit"
-    blur = 5.0  # Blur factor for the initial state image
+    state_image = "camera"  # Options: "horse", "shifted_horse", "cosine", "double_slit", "single_shifted_slit"
+    blur = 2.0  # Blur factor for the initial state image
     backend = "torch"  # Options: "numpy" or "torch"
     generate_animation(
         N=N,

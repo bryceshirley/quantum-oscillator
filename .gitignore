@@ -13,3 +13,5 @@ wheels/
 *.mp4
 *.png
 results/
+
+*.DS_Store
