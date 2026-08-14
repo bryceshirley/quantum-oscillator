@@ -15,3 +15,5 @@ wheels/
 results/
 
 *.DS_Store
+
+*.pptx
