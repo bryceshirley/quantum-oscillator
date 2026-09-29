@@ -71,11 +71,12 @@ def get_initial_state(
     state_image: str = "horse",
     blur: float = 5.0,
     backend: str = "numpy",
+    precision: str = "double",
 ) -> Array:
     """
     Builds a normalised complex initial state on the N x N grid.
     """
-    backend_info = resolve_backend(backend)
+    backend_info = resolve_backend(backend, precision)
 
     xp = backend_info.xp
     device = backend_info.device

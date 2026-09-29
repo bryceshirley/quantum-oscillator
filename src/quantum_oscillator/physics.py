@@ -23,12 +23,14 @@ def apply_hamiltonian(psi: Array, V: Array, K: Array) -> Array:
     return T_psi + V * psi
 
 
-def get_propagators(N: int, L: float, backend: str = "numpy") -> tuple[Array, Array]:
+def get_propagators(
+    N: int, L: float, backend: str = "numpy", precision: str = "double"
+) -> tuple[Array, Array]:
     """
     Creates the 2D grid, Harmonic Oscillator potential, and initial state.
     Calculates the exact spectral momentum operator (K) using pure Array API.
     """
-    backend_info = resolve_backend(backend)
+    backend_info = resolve_backend(backend, precision)
     xp = backend_info.xp
     device = backend_info.device
     dtype = backend_info.complex

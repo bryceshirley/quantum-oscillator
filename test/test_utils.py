@@ -51,9 +51,29 @@ def test_resolve_backend_torch():
         assert backend.complex == torch.complex128
 
 
+def test_resolve_backend_numpy_single_precision():
+    backend = resolve_backend("numpy", precision="single")
+    assert backend.real == np.float32
+    assert backend.complex == np.complex64
+
+
+@requires_torch
+def test_resolve_backend_torch_single_precision():
+    import torch
+
+    backend = resolve_backend("torch", precision="single")
+    assert backend.real == torch.float32
+    assert backend.complex == torch.complex64
+
+
 def test_resolve_backend_invalid():
     with pytest.raises(ValueError, match="unknown backend"):
         resolve_backend("tensorflow")
+
+
+def test_resolve_backend_invalid_precision():
+    with pytest.raises(ValueError, match="unknown precision"):
+        resolve_backend("numpy", precision="half")
 
 
 # --------------------------------------------------------------------------

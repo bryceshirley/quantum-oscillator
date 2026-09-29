@@ -133,7 +133,7 @@ def to_device(array: Any, device: Any) -> Any:
     return array
 
 
-def resolve_backend(backend: str = "numpy") -> Backend:
+def resolve_backend(backend: str = "numpy", precision: str = "double") -> Backend:
     """Map a backend name onto its namespace, device and dtypes.
 
     This is the single place where a string turns into a namespace. Everything
@@ -142,17 +142,26 @@ def resolve_backend(backend: str = "numpy") -> Backend:
     ----------
     backend : str
         The backend to use for array computations ('numpy', 'torch', or 'cupy').
+    precision : str
+        'double' for float64/complex128 or 'single' for float32/complex64.
+        The torch backend on MPS is always single: Metal has no FP64.
     Returns
     -------
     Backend
         A named tuple containing the namespace, device, and dtypes for the backend.
     """
+    if precision not in ("single", "double"):
+        raise ValueError(
+            f"unknown precision {precision!r}; expected 'single' or 'double'"
+        )
+    single = precision == "single"
+
     if backend == "torch":
         if not _HAS_TORCH:
             raise ImportError('backend="torch" requires torch to be installed')
         import array_api_compat.torch as xp
 
-        if DEVICE == "mps":
+        if DEVICE == "mps" or single:
             # Metal has no FP64, so the GPU path is single precision.
             return Backend(xp, DEVICE, torch.float32, torch.complex64)
         return Backend(xp, DEVICE, torch.float64, torch.complex128)
@@ -160,11 +169,15 @@ def resolve_backend(backend: str = "numpy") -> Backend:
     if backend == "numpy":
         import array_api_compat.numpy as xp
 
+        if single:
+            return Backend(xp, None, xp.float32, xp.complex64)  # type: ignore
         return Backend(xp, None, xp.float64, xp.complex128)  # type: ignore
 
     if backend == "cupy":
         import array_api_compat.cupy as xp
 
+        if single:
+            return Backend(xp, None, xp.float32, xp.complex64)  # type: ignore
         return Backend(xp, None, xp.float64, xp.complex128)  # type: ignore
 
     raise ValueError(
