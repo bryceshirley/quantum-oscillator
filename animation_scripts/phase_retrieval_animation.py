@@ -4,13 +4,17 @@ Runs the blind reconstruction from the demo notebook's section 7 -- recover a
 never-seen image from nothing but the noisy, phaseless brightness a camera
 records at the Fourier plane, a positivity constraint, a loose support box and
 a total-variation penalty against noise-fitting speckle -- and renders the
-optimisation as a three-panel animation:
+optimisation as a four-panel animation:
 
   1. the current guess for the initial image (t = 0), starting as random
      speckle and converging to the horse;
   2. that guess evolved half a period to t = pi, so the upside-down horse
      appears the moment the reconstruction becomes right;
-  3. the loss falling as Adam walks downhill through the physics.
+  3. the same evolution continued to t = 2*pi, where the oscillator revives
+     the guess exactly -- physics done with a state we reconstructed;
+  4. the loss falling as Adam walks downhill through the physics, alongside
+     the true reconstruction error (the distance from the ground-truth image
+     the optimiser is never shown).
 
 Torch autodiff differentiates through every FFT of the split-operator
 integrator; the same `evolve` that runs the forward physics is the forward
@@ -31,7 +35,7 @@ from quantum_oscillator.data import get_initial_state
 from quantum_oscillator.operators import evolve
 from quantum_oscillator.physics import get_propagators
 from quantum_oscillator.plotting import complex_to_rgb, tidy
-from quantum_oscillator.utils import to_host
+from quantum_oscillator.utils import state_distance, to_host
 
 SAVE_DIR = pathlib.Path(__file__).resolve().parent.parent / "animation_output"
 
@@ -102,30 +106,44 @@ def generate_retrieval_animation(
         x = (a**2) * support
         return x / torch.linalg.vector_norm(x)
 
-    # 3. The three panels ----------------------------------------------------
-    fig, (ax_now, ax_pi, ax_loss) = plt.subplots(1, 3, figsize=(13.5, 4.6))
-    fig.subplots_adjust(top=0.82, wspace=0.25)
+    # 3. The four panels -----------------------------------------------------
+    fig, (ax_now, ax_pi, ax_rev, ax_err) = plt.subplots(1, 4, figsize=(18.5, 4.4))
+    fig.subplots_adjust(top=0.82, wspace=0.45)
 
     def rgb(z):
         return complex_to_rgb(to_host(z))
 
+    def evolve_half(psi):
+        return evolve(psi, V, K, 2 * quarter, 2 * steps_per_quarter)
+
     with torch.no_grad():
         guess0 = image_guess().to(psi_true.dtype)
+        psi_pi0 = evolve_half(guess0)
         im_now = ax_now.imshow(rgb(guess0))
-        im_pi = ax_pi.imshow(
-            rgb(evolve(guess0, V, K, 2 * quarter, 2 * steps_per_quarter))
-        )
+        im_pi = ax_pi.imshow(rgb(psi_pi0))
+        im_rev = ax_rev.imshow(rgb(evolve_half(psi_pi0)))
     ax_now.set_title("current guess  |  t = 0", fontsize=11)
     ax_pi.set_title("the guess at t = $\\pi$", fontsize=11)
-    for axi in (ax_now, ax_pi):
+    ax_rev.set_title("revived at t = 2$\\pi$", fontsize=11)
+    for axi in (ax_now, ax_pi, ax_rev):
         axi.axis("off")
 
-    (loss_line,) = ax_loss.semilogy([], [], lw=2)
-    ax_loss.set_xlim(0, iters)
-    ax_loss.set_xlabel("Adam iteration")
-    ax_loss.set_ylabel("loss")
-    ax_loss.set_title("reconstruction loss", fontsize=11)
-    tidy(ax_loss)
+    (loss_line,) = ax_err.semilogy([], [], lw=2, color="C0")
+    ax_err.set_xlim(0, iters)
+    ax_err.set_xlabel("Adam iteration")
+    ax_err.set_ylabel("loss", color="C0")
+    ax_err.tick_params(axis="y", labelcolor="C0")
+    ax_err.set_title("loss and reconstruction error", fontsize=11)
+    tidy(ax_err)
+
+    # the loss falls through decades while the error moves within one, so the
+    # error gets its own linear axis on the right
+    ax_truth = ax_err.twinx()
+    (err_line,) = ax_truth.plot([], [], lw=2, color="C1")
+    ax_truth.set_ylim(0, float(np.sqrt(2)))  # the full range for unit-norm images
+    ax_truth.set_ylabel("distance from the truth", color="C1")
+    ax_truth.tick_params(axis="y", labelcolor="C1")
+    ax_truth.spines["top"].set_visible(False)
 
     title = fig.suptitle("iteration 0", fontsize=13)
 
@@ -146,15 +164,24 @@ def generate_retrieval_animation(
         plt.ion()
         plt.show()
 
-    def draw_frame(iteration, losses):
+    def draw_frame(iteration, losses, errors):
         with torch.no_grad():
-            guess = image_guess().to(psi_true.dtype)
+            guess = image_guess()
+            errors.append(state_distance(guess, true_img))
+            guess = guess.to(psi_true.dtype)
+            psi_pi = evolve_half(guess)
             im_now.set_data(rgb(guess))
-            im_pi.set_data(rgb(evolve(guess, V, K, 2 * quarter, 2 * steps_per_quarter)))
+            im_pi.set_data(rgb(psi_pi))
+            im_rev.set_data(rgb(evolve_half(psi_pi)))
         loss_line.set_data(np.arange(len(losses)), losses)
-        ax_loss.relim()
-        ax_loss.autoscale_view(scalex=False)
-        title.set_text(f"iteration {iteration}   |   loss {losses[-1]:.2e}")
+        # the error is only measured once per frame, so its x-grid is coarser
+        err_line.set_data(np.arange(len(errors)) * frame_every, errors)
+        ax_err.relim()
+        ax_err.autoscale_view(scalex=False)
+        title.set_text(
+            f"iteration {iteration}   |   loss {losses[-1]:.2e}"
+            f"   |   error {errors[-1]:.3f}"
+        )
         if live:
             fig.canvas.draw_idle()
             plt.pause(0.001)
@@ -165,6 +192,7 @@ def generate_retrieval_animation(
     # 4. Optimise, drawing as we go ------------------------------------------
     start = time.time()
     losses = []
+    errors = []
     for iteration in range(iters + 1):
         optimiser.zero_grad()
         x = image_guess()
@@ -177,13 +205,14 @@ def generate_retrieval_animation(
         losses.append(loss.item())
 
         if iteration % frame_every == 0:
-            draw_frame(iteration, losses)
+            draw_frame(iteration, losses, errors)
         if iteration % 1000 == 0:
             print(f"   iteration {iteration:5d}   loss {losses[-1]:.3e}")
 
     with torch.no_grad():
         overlap = float((image_guess() * true_img).sum())
     print(f"\n final overlap with the true image: {overlap:.3f}")
+    print(f" final distance from the true image: {errors[-1]:.3f}")
     print(f" optimised and rendered in {time.time() - start:.1f}s")
 
     if writer is not None:
