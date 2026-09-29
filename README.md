@@ -13,7 +13,7 @@ Code and slides for a talk on building a quantum oscillator to rotate an image w
 
 The integrators in
 [`src/quantum_oscillator/operators.py`](src/quantum_oscillator/operators.py) never
-import NumPy or PyTorch: they call `get_namespace(psi)` and do the maths in whatever
+import NumPy or PyTorch: they call `array_namespace(psi)` and do the maths in whatever
 namespace the array belongs to. NumPy arrays run on the CPU; the same source lines
 run torch tensors on a GPU.
 

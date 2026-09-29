@@ -1,6 +1,6 @@
 from typing import Literal, overload
 
-from array_api_compat import get_namespace
+from array_api_compat import array_namespace
 
 from quantum_oscillator.physics import apply_hamiltonian
 from quantum_oscillator.utils import Array, PropagatorFunc
@@ -27,7 +27,7 @@ def lie_trotter_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
         The evolved quantum state after applying the split operator step.
     """
     # Get the appropriate array namespace (NumPy, PyTorch, etc.)
-    xp = get_namespace(psi, V)
+    xp = array_namespace(psi, V)
 
     # 1. Kinetic wave phase shift in momentum space
     # Momentum space -> apply exp(1j * dt * K) -> Real space
@@ -63,7 +63,7 @@ def strang_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
     psi_new : Array
         The evolved quantum state after applying the split operator step.
     """
-    xp = get_namespace(psi, V)
+    xp = array_namespace(psi, V)
 
     # 1. Half potential wave phase shift in real space
     psi = psi * xp.exp(0.5j * dt * V)
@@ -103,7 +103,7 @@ def conjugate_strang_step(psi: Array, V: Array, K: Array, dt: float) -> Array:
     psi_new : Array
         The evolved quantum state after applying the split operator step.
     """
-    xp = get_namespace(psi, V)
+    xp = array_namespace(psi, V)
 
     # 1. Half kinetic wave phase shift in momentum space
     psi_k = xp.fft.fft2(psi)
@@ -258,7 +258,7 @@ def evolve(
             psi = step_fn(psi, V, K, dt)
         return psi
 
-    xp = get_namespace(psi, V)
+    xp = array_namespace(psi, V)
     norms = [float(xp.linalg.vector_norm(psi))]
     for _ in range(n_steps):
         psi = step_fn(psi, V, K, dt)
