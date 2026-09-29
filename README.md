@@ -27,7 +27,7 @@ run torch tensors on a GPU.
 | `integrators_demo.ipynb` | The demo notebook (see below) |
 | `animation_scripts/` | Scripts that render the talk's animations (see below) |
 | `test/` | The pytest suite |
-| `toolbox_talk.pptx` / `.pdf` | The slides |
+| `Presentation.pptx` | The slides |
 
 ### The package, `src/quantum_oscillator/`
 
