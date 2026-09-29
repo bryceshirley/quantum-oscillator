@@ -2,14 +2,12 @@ import numpy as np
 import pytest
 
 # Adjust this import to match your actual module structure
-from toolbox_talk.utils import (
+from quantum_oscillator.utils import (
     _HAS_TORCH,
     Backend,
-    from_numpy,
     resolve_backend,
     to_device,
     to_host,
-    to_numpy,
 )
 
 # --------------------------------------------------------------------------
@@ -69,28 +67,12 @@ def test_to_host_numpy(numpy_array):
     assert np.array_equal(result, numpy_array)
 
 
-def test_to_numpy_numpy(numpy_array):
-    result = to_numpy(numpy_array)
-    assert isinstance(result, np.ndarray)
-    assert np.array_equal(result, numpy_array)
-
-
 @requires_torch
 def test_to_host_torch(numpy_array):
     import torch
 
     tensor = torch.tensor(numpy_array, device="cpu")
     result = to_host(tensor)
-    assert isinstance(result, np.ndarray)
-    assert np.array_equal(result, numpy_array)
-
-
-@requires_torch
-def test_to_numpy_torch(numpy_array):
-    import torch
-
-    tensor = torch.tensor(numpy_array, device="cpu", requires_grad=True)
-    result = to_numpy(tensor)
     assert isinstance(result, np.ndarray)
     assert np.array_equal(result, numpy_array)
 
@@ -114,28 +96,4 @@ def test_to_device_torch():
     # CPU to CPU is a valid no-op check
     result = to_device(tensor, "cpu")
     assert isinstance(result, torch.Tensor)
-    assert str(result.device) == "cpu"
-
-
-# --------------------------------------------------------------------------
-# Tests for from_numpy
-# --------------------------------------------------------------------------
-
-
-def test_from_numpy_to_numpy_backend(numpy_array):
-    import array_api_compat.numpy as xp
-
-    result = from_numpy(numpy_array, xp, dtype=np.float32, device=None)
-    assert isinstance(result, np.ndarray)
-    assert result.dtype == np.float32
-
-
-@requires_torch
-def test_from_numpy_to_torch_backend(numpy_array):
-    import array_api_compat.torch as xp
-    import torch
-
-    result = from_numpy(numpy_array, xp, dtype=torch.float32, device="cpu")
-    assert isinstance(result, torch.Tensor)
-    assert result.dtype == torch.float32
     assert str(result.device) == "cpu"

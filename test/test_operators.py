@@ -5,18 +5,21 @@ Reduced to focus on backend compatibility and basic physics properties.
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pytest
 
-from toolbox_talk.operators import (
+from quantum_oscillator.operators import (
+    conjugate_strang_step,
+    evolve,
     forward_euler_step,
     lie_trotter_step,
+    strang_step,
+    suzuki_trotter_step,
 )
-from toolbox_talk.operators_extra import (
-    arnoldi_step,
-)
-from toolbox_talk.physics import get_propagators
-from toolbox_talk.utils import resolve_backend, to_host
+from quantum_oscillator.physics import get_propagators
+from quantum_oscillator.utils import resolve_backend, to_host
 
 N = 32
 L = 8.0
@@ -93,7 +96,22 @@ def propagators(backend_name):
     return get_propagators(N, L, backend_name)
 
 
-ALL_STEPS = [lie_trotter_step, forward_euler_step, arnoldi_step]
+ALL_STEPS = [
+    lie_trotter_step,
+    strang_step,
+    conjugate_strang_step,
+    suzuki_trotter_step,
+    forward_euler_step,
+]
+
+# Every factor in a splitting method is a pure phase, so these are unitary
+# to machine precision at any dt.
+SPLITTING_STEPS = [
+    lie_trotter_step,
+    strang_step,
+    conjugate_strang_step,
+    suzuki_trotter_step,
+]
 
 # --------------------------------------------------------------------------
 # tests
@@ -111,14 +129,93 @@ def test_step_preserves_shape_and_dtype(step, backend_cfg, propagators):
     assert out.dtype == psi.dtype
 
 
-def test_lie_trotter_step_is_exactly_unitary(device, backend_cfg, propagators):
+@pytest.mark.parametrize("step", SPLITTING_STEPS, ids=lambda f: f.__name__)
+def test_splitting_step_is_exactly_unitary(step, device, backend_cfg, propagators):
     """Each factor is a pure phase, so the norm is conserved."""
     V, K = propagators
     psi = gaussian(backend_cfg)
-    out = lie_trotter_step(psi, V, K, 0.5)
+    out = step(psi, V, K, 0.5)
 
     tol = 1e-4 if single_precision(device) else 1e-9
     assert float(backend_cfg.xp.linalg.vector_norm(out)) == pytest.approx(1.0, abs=tol)
+
+
+def test_suzuki_trotter_is_fourth_order(device, backend_cfg, propagators):
+    """Halving dt should shrink the error by ~2^4; require a safe margin."""
+    if single_precision(device):
+        pytest.skip("convergence-order measurement needs double precision")
+
+    V, K = propagators
+    psi0 = gaussian(backend_cfg)
+    T = 1.0
+
+    def evolve(n_steps):
+        psi = psi0
+        for _ in range(n_steps):
+            psi = suzuki_trotter_step(psi, V, K, T / n_steps)
+        return to_host(psi).ravel()
+
+    ref = evolve(128)
+    err_coarse = np.linalg.norm(evolve(4) - ref)
+    err_fine = np.linalg.norm(evolve(8) - ref)
+
+    assert err_coarse / err_fine > 10
+
+
+def test_suzuki_trotter_rejects_bad_order(backend_cfg, propagators):
+    V, K = propagators
+    psi = gaussian(backend_cfg)
+
+    for bad_order in (0, 3, -2):
+        with pytest.raises(ValueError):
+            suzuki_trotter_step(psi, V, K, 0.01, order=bad_order)
+
+
+def test_evolve_matches_manual_stepping(backend_cfg, propagators):
+    """evolve(T, n_steps) is exactly n_steps equal applications of step_fn."""
+    V, K = propagators
+    psi0 = gaussian(backend_cfg)
+    T, n_steps = 0.4, 5
+
+    manual = psi0
+    for _ in range(n_steps):
+        manual = strang_step(manual, V, K, T / n_steps)
+    driven = evolve(psi0, V, K, T, n_steps, step_fn=strang_step)
+
+    np.testing.assert_array_equal(to_host(driven), to_host(manual))
+
+
+def test_evolve_defaults_to_lie_trotter(backend_cfg, propagators):
+    V, K = propagators
+    psi0 = gaussian(backend_cfg)
+
+    driven = evolve(psi0, V, K, 0.1, 1)
+    manual = lie_trotter_step(psi0, V, K, 0.1)
+
+    np.testing.assert_array_equal(to_host(driven), to_host(manual))
+
+
+def test_evolve_track_norm(backend_cfg, propagators):
+    """track_norm returns (psi, norms) with the initial norm first."""
+    V, K = propagators
+    psi0 = gaussian(backend_cfg)
+    n_steps = 5
+
+    plain = evolve(psi0, V, K, 0.4, n_steps, step_fn=strang_step)
+    tracked, norms = evolve(
+        psi0, V, K, 0.4, n_steps, step_fn=strang_step, track_norm=True
+    )
+
+    np.testing.assert_array_equal(to_host(tracked), to_host(plain))
+    assert len(norms) == n_steps + 1
+    # a splitting method conserves the norm at every recorded point
+    np.testing.assert_allclose(norms, norms[0], rtol=1e-5)
+
+    # forward Euler must grow the norm on every step
+    _, euler_norms = evolve(
+        psi0, V, K, 0.4, n_steps, step_fn=forward_euler_step, track_norm=True
+    )
+    assert all(b > a for a, b in itertools.pairwise(euler_norms))
 
 
 def test_backends_agree(propagators, device, backend_cfg):

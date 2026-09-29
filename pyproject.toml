@@ -1,5 +1,5 @@
 [project]
-name = "toolbox-talk"
+name = "quantum-oscillator"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -21,8 +21,8 @@ dependencies = [
     "ty>=0.0.64",
 ]
 
-[project.scripts]
-toolbox-talk = "toolbox_talk:main"
+[tool.ty.src]
+exclude = ["**/.ipynb_checkpoints"]
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12.0"]
